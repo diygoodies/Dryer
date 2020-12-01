@@ -6,7 +6,7 @@
 #include <EEPROM.h>
 
 #define ONE_WIRE_BUS 14
-#define GET_PERIOD 1000
+#define GET_PERIOD 3000
 #define INC_PERIOD 500
 #define BLNK_PERIOD 1000
 #define TEMP_MIDDLE 215
@@ -19,23 +19,26 @@
 
 OneWire oneWire(ONE_WIRE_BUS);
 DS18B20 sensor(&oneWire);
+
 int temp=0;
 byte topTempTreshhold=5;
 byte botTempTreshhold=5;
 unsigned int menuMode=0;
 unsigned long incTimer;
+bool alarmFlag=false;
 SevSeg sevseg; //Instantiate a seven segment controller object
 
 ButtonDebounce buttonL(2, 250);
 ButtonDebounce buttonC(3, 250);
 ButtonDebounce buttonR(4, 250);
+ButtonDebounce buttonA(17, 250);
 
 
 bool checkIncPromt(void)
 {
   if (millis() - incTimer >= INC_PERIOD) 
   {
-    Serial.println(millis() - incTimer);
+    //Serial.println(millis() - incTimer);
     incTimer = millis();
     /*
     Serial.print("topTempTreshhold ");
@@ -116,10 +119,10 @@ void setup()
   
   sevseg.begin(hardwareConfig, numDigits, digitPins, segmentPins, resistorsOnSegments,
   updateWithDelays, leadingZeros, disableDecPoint);
-  sevseg.setBrightness(90);
+  sevseg.setBrightness(100);
   
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(RELAY_PIN, HIGH);
   
   Serial.begin(115200);
   Serial.println(__FILE__);
@@ -147,6 +150,7 @@ void loop()
   buttonL.update();
   buttonC.update();
   buttonR.update();
+  buttonA.update();
   if(buttonL.state() == LOW)
   {
     buttonLChanged(0);
@@ -161,16 +165,30 @@ void loop()
   {
     buttonRChanged(0);
   }
-  
+   if(buttonA.state() == LOW)
+  {
+    digitalWrite(RELAY_PIN, HIGH);
+    Serial.println("Alarm OFF Button");
+  }
   switch(menuMode) 
   {
     case TEMP_MODE:
          sevseg.setNumber(temp, 1);
-         digitalWrite(RELAY_PIN, LOW);
+         if(alarmFlag==true)
+         {
+          alarmFlag=false;
+          digitalWrite(RELAY_PIN, HIGH);
+          Serial.println("Alarm OFF return in range");
+         }
     break;
     
     case TEMP_ALARM_MODE:
-        digitalWrite(RELAY_PIN, HIGH);
+        if((digitalRead(RELAY_PIN)==HIGH)&&(alarmFlag==false))
+        {
+          alarmFlag=true;
+          digitalWrite(RELAY_PIN, LOW);
+          Serial.println("Alarm ON");
+        }
         if (millis() - blinkTimer >= BLNK_PERIOD) 
         {
           sevseg.setNumber(temp, 1);
@@ -215,12 +233,10 @@ void loop()
       if ((menuMode==TEMP_MODE)&&((temp>topTempTreshhold+TEMP_MIDDLE)||(temp<TEMP_MIDDLE-botTempTreshhold)))
       {
         menuMode=TEMP_ALARM_MODE;
-        /*
-        Serial.print("topTempTreshhold ");
-        Serial.print(topTempTreshhold+TEMP_MIDDLE);
-        Serial.print("   botTempTreshhold ");
-        Serial.println(TEMP_MIDDLE-botTempTreshhold);
-        */
+      }
+      else if ((menuMode==TEMP_ALARM_MODE)&&((temp<topTempTreshhold+TEMP_MIDDLE)&&(temp>TEMP_MIDDLE-botTempTreshhold)))
+      {
+        menuMode=TEMP_MODE;
       }
       //sevseg.setNumber(temp, 1);
       sensor.requestTemperatures();
